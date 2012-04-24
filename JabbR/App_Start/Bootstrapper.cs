@@ -14,12 +14,9 @@ using JabbR.Migrations;
 using JabbR.Models;
 using JabbR.Services;
 using JabbR.ViewModels;
-using Microsoft.CSharp.RuntimeBinder;
 using Ninject;
 using RouteMagic;
 using SignalR;
-using SignalR.Hosting.AspNet;
-using SignalR.Infrastructure;
 using SignalR.Ninject;
 
 [assembly: WebActivator.PostApplicationStartMethod(typeof(JabbR.App_Start.Bootstrapper), "PreAppStart")]
@@ -75,7 +72,7 @@ namespace JabbR.App_Start
 
             var resolver = new NinjectDependencyResolver(kernel);
 
-            GlobalHost.SetResolver(resolver);
+            RouteTable.Routes.MapHubs("~/signalr", resolver);
 
             // Perform the required migrations
             DoMigrations();
