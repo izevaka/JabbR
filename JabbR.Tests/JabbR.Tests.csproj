@@ -59,9 +59,11 @@
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="ApiHandlerBaseFacts.cs" />
     <Compile Include="ChatFacts.cs" />
     <Compile Include="ChatServiceFacts.cs" />
     <Compile Include="CommandManagerFacts.cs" />
+    <Compile Include="AuthApiHandlerFacts.cs" />
     <Compile Include="TextTransformFacts.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>

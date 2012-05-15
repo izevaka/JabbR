@@ -70,6 +70,9 @@ namespace JabbR.App_Start
                   .To<ApplicationSettings>()
                   .InSingletonScope();
 
+            kernel.Bind<IVirtualPathUtility>()
+                  .To<VirtualPathUtilityWrapper>();
+
             kernel.Bind<IJavaScriptMinifier>()
                   .To<AjaxMinMinifier>()
                   .InSingletonScope();
@@ -116,6 +119,12 @@ namespace JabbR.App_Start
                                              new { format = "json" },
                                              new { },
                                              ctx => kernel.Get<MessagesHandler>());
+            
+            RouteTable.Routes.MapHttpHandler("Auth", "api/v1/{format}",
+                                             new { format = "json" },
+                                             new { },
+                                             ctx => kernel.Get<AuthApiHandler>());
+
         }
 
         private static void ClearConnectedClients(IJabbrRepository repository)

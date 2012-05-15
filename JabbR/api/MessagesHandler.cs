@@ -10,7 +10,7 @@ using Newtonsoft.Json.Serialization;
 
 namespace JabbR.Handlers
 {
-    public class MessagesHandler : IHttpHandler
+    public class MessagesHandler : ApiHandlerBase
     {
         const string FilenameDateFormat = "yyyy-MM-dd.HHmmsszz";
 
@@ -21,19 +21,12 @@ namespace JabbR.Handlers
             _repository = repository;
         }
 
-        public bool IsReusable
+        public override void Process()
         {
-            get { return false; }
-        }
-
-        public void ProcessRequest(HttpContext context)
-        {
-            var request = context.Request;
-            var response = context.Response;
+            var request = Context.Request;
             var routeData = request.RequestContext.RouteData.Values;
 
             var roomName = (string)routeData["room"];
-            var formatName = (string)routeData["format"];
             var range = request["range"];
 
             if (String.IsNullOrWhiteSpace(range))
@@ -62,7 +55,7 @@ namespace JabbR.Handlers
                     start = DateTime.MinValue;
                     break;
                 default:
-                    WriteBadRequest(response, "range value not recognized");
+                    Writer.WriteBadRequest("range value not recognized");
                     return;
             }
 
@@ -74,29 +67,26 @@ namespace JabbR.Handlers
             }
             catch (Exception ex)
             {
-                WriteNotFound(response, ex.Message);
+                Writer.WriteNotFound(ex.Message);
                 return;
             }
 
             if (room.Private)
             {
                 // TODO: Allow viewing messages using auth token
-                WriteNotFound(response, String.Format("Unable to locate room {0}.", room.Name));
+                Writer.WriteNotFound(String.Format("Unable to locate room {0}.", room.Name));
                 return;
             }
 
             var messages = _repository.GetMessagesByRoom(room)
                 .Where(msg => msg.When <= end && msg.When >= start)
-                .OrderBy(msg => msg.When)
+                //.OrderBy(msg => msg.When)
                 .Select(msg => new
                 {
                     Content = msg.Content,
                     Username = msg.User.Name,
                     When = msg.When
                 });
-
-            bool downloadFile = false;
-            Boolean.TryParse(request["download"], out downloadFile);
 
             var filenamePrefix = roomName + ".";
 
@@ -107,62 +97,7 @@ namespace JabbR.Handlers
 
             filenamePrefix += end.ToString(FilenameDateFormat, CultureInfo.InvariantCulture);
 
-            switch (formatName)
-            {
-                case "json":
-                    var json = Serialize(messages);
-                    var data = Encoding.UTF8.GetBytes(json);
-
-                    response.ContentType = "application/json";
-                    response.ContentEncoding = Encoding.UTF8;
-
-                    if (downloadFile)
-                    {
-                        response.Headers["Content-Disposition"] = "attachment; filename=\"" + filenamePrefix + ".json\"";
-                    }
-
-                    response.BinaryWrite(data);
-                    break;
-                default:
-                    WriteBadRequest(response, "format not supported.");
-                    return;
-            }
-        }
-
-        private void WriteBadRequest(HttpResponse response, string message)
-        {
-            WriteError(response, 400, "Bad request", message);
-        }
-
-        private void WriteNotFound(HttpResponse response, string message)
-        {
-            WriteError(response, 404, "Not found", message);
-        }
-
-        private void WriteError(HttpResponse response, int statusCode, string description, string message)
-        {
-            response.TrySkipIisCustomErrors = true;
-            response.StatusCode = statusCode;
-            response.StatusDescription = description;
-            response.Write(Serialize(new ClientError { Message = message }));
-        }
-
-        private string Serialize(object value)
-        {
-            var resolver = new CamelCasePropertyNamesContractResolver();
-            var settings = new JsonSerializerSettings
-            {
-                ContractResolver = resolver
-            };
-
-            settings.Converters.Add(new IsoDateTimeConverter());
-
-            return JsonConvert.SerializeObject(value, Formatting.Indented, settings);
-        }
-
-        private class ClientError
-        {
-            public string Message { get; set; }
+            Writer.WriteResponseObejct(messages, filenamePrefix);
         }
     }
 }

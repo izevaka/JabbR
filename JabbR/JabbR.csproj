@@ -802,6 +802,14 @@
     </Content>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="api\ApiHandlerBase.cs" />
+    <Compile Include="api\ApiResponse.cs" />
+    <Compile Include="api\ApiResponseWriter.cs" />
+    <Compile Include="api\Handlers\AuthApiHandler.cs" />
+    <Compile Include="api\AuthApiResponse.cs" />
+    <Compile Include="api\IApiResponseWriter.cs" />
+    <Compile Include="api\IVirtualPathUtility.cs" />
+    <Compile Include="api\VirtualPathUtilityWrapper.cs" />
     <Compile Include="App_Start\Bootstrapper.cs" />
     <Compile Include="Auth\Login.ashx.cs">
       <DependentUpon>Login.ashx</DependentUpon>
