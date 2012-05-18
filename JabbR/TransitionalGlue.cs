@@ -3,10 +3,14 @@ using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.Remoting.Messaging;
+using System.Threading;
 using System.Web;
 using System.Web.Hosting;
 using System.Web.Http;
 using System.Web.Routing;
+using Jurassic.Compiler;
+using Ninject.Activation;
 using Owin;
 using SignalR.Ninject;
 
@@ -38,7 +42,7 @@ namespace JabbR
                 app => (env, result, fault) =>
                 {
                     var req = new Gate.Request(env);
-                    if (req.Path == "/")
+                    if (req.Path == "/" || req.Path.Equals("/Default.aspx", StringComparison.OrdinalIgnoreCase))
                     {
                         var view = (PseudoWebForms.View)Activator.CreateInstance(viewType);
                         view.Request = req;
@@ -53,6 +57,47 @@ namespace JabbR
 
 
         public static NinjectDependencyResolver Resolver { get; set; }
+
+
+        public static object RequestScopeAccessor(IContext context)
+        {
+            var scope = CallContext.LogicalGetData("Jabbr.TransitionalGlue.Scope");
+            return scope;
+        }
+
+        public static IAppBuilder UseRequestScope(this IAppBuilder builder, Func<Action> scopeFactory)
+        {
+            return builder.Use<AppDelegate>(
+                app => (env, result, fault) =>
+                {
+                    new Gate.Request(env).CallDisposed.Register(scopeFactory());
+                    app(env, result, fault);
+                });
+        }
+
+        public static IDisposable CreateScope()
+        {
+            var prior = CallContext.LogicalGetData("Jabbr.TransitionalGlue.Scope");
+            CallContext.LogicalSetData("Jabbr.TransitionalGlue.Scope", new object());
+            return prior == null
+                ? new Disposable(() => CallContext.FreeNamedDataSlot("Jabbr.TransitionalGlue.Scope"))
+                : new Disposable(() => CallContext.LogicalSetData("Jabbr.TransitionalGlue.Scope", prior));
+        }
+
+        class Disposable : IDisposable
+        {
+            private Action _dispose;
+
+            public Disposable(Action dispose)
+            {
+                _dispose = dispose;
+            }
+
+            public void Dispose()
+            {
+                Interlocked.Exchange(ref _dispose, () => { }).Invoke();
+            }
+        }
     }
 
     public static class GlobalConfiguration
@@ -210,6 +255,6 @@ public class View : JabbR.PseudoWebForms.View
                 scan = next.endIndex + 2;
             }
         }
-        
+
     }
 }

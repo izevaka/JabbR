@@ -51,15 +51,15 @@ namespace JabbR.App_Start
 
             kernel.Bind<JabbrContext>()
                 .To<JabbrContext>()
-                .InRequestScope();
+                .InScope(TransitionalGlue.RequestScopeAccessor);
 
             kernel.Bind<IJabbrRepository>()
                 .To<PersistedRepository>()
-                .InRequestScope();
+                .InScope(TransitionalGlue.RequestScopeAccessor);
 
             kernel.Bind<IChatService>()
                   .To<ChatService>()
-                  .InRequestScope();
+                  .InScope(TransitionalGlue.RequestScopeAccessor);
 
             kernel.Bind<ICryptoService>()
                 .To<CryptoService>()
@@ -104,11 +104,21 @@ namespace JabbR.App_Start
 
             // Start the sweeper
             var repositoryFactory = new Func<IJabbrRepository>(() => kernel.Get<IJabbrRepository>());
-            _timer = new Timer(_ => Sweep(repositoryFactory, resolver), null, _sweepInterval, _sweepInterval);
+            _timer = new Timer(
+                _ =>
+                {
+                    using (TransitionalGlue.CreateScope())
+                    {
+                        Sweep(repositoryFactory, resolver);
+                    }
+                }, null, _sweepInterval, _sweepInterval);
 
             SetupErrorHandling();
 
-            ClearConnectedClients(repositoryFactory());
+            using (TransitionalGlue.CreateScope())
+            {
+                ClearConnectedClients(repositoryFactory());
+            }
 
             SetupRoutes(kernel);
             SetupWebApi(kernel);

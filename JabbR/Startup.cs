@@ -1,11 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Threading;
+using System.Web.Hosting;
 using System.Web.Http;
 using Gate.Adapters.AspNetWebApi;
 using Gate.Middleware;
+using Gate;
 using JabbR.App_Start;
 using Owin;
 using SignalR.Hosting.Owin;
@@ -18,17 +19,55 @@ namespace JabbR
         {
             GlobalConfiguration.Configuration = new HttpConfiguration();
 
+            if (HostingEnvironment.IsHosted)
+            {
+                // change current directory when in aspnet
+                Directory.SetCurrentDirectory(HostingEnvironment.MapPath("~") ?? Directory.GetCurrentDirectory());
+            }
+            else
+            {
+                // ensure ExecutionContext on non-aspnet servers
+                builder.Use(NewExecutionContext);
+            }
+
             Bootstrapper.PreAppStart();
 
             builder
-                .Use<AppDelegate>(Sanity)
+                .Use(SanityChecks)
+                .UseRequestScope(() => TransitionalGlue.CreateScope().Dispose)
                 .UseHomePage()
                 .UseStatic(TransitionalGlue.BasePath())
-                .UseSignalRHubs("/signalr", TransitionalGlue.Resolver)
+                .UseSignalR(TransitionalGlue.Resolver)
                 .RunHttpServer(GlobalConfiguration.Configuration);
         }
 
-        private AppDelegate Sanity(AppDelegate app)
+        private AppDelegate NewExecutionContext(AppDelegate app)
+        {
+            return
+                (env, result, fault) =>
+                {
+                    ExecutionContext.SuppressFlow();
+                    ThreadPool.QueueUserWorkItem(
+                        _ =>
+                        {
+                            var context = ExecutionContext.Capture();
+                            app(
+                                env,
+                                (status, headers, body) => result(
+                                    status,
+                                    headers,
+                                    (write, flush, end, cancellationToken) => ExecutionContext.Run(
+                                        context.CreateCopy(),
+                                        __ => body(write, flush, end, cancellationToken),
+                                        null)),
+                                fault);
+                        },
+                        null);
+                    ExecutionContext.RestoreFlow();
+                };
+        }
+
+        private AppDelegate SanityChecks(AppDelegate app)
         {
             return
                 (env, result, fault) =>
