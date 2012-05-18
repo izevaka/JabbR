@@ -24,7 +24,7 @@ using SignalR;
 using SignalR.Hosting.Common;
 using SignalR.Ninject;
 
-[assembly: WebActivator.PostApplicationStartMethod(typeof(JabbR.App_Start.Bootstrapper), "PreAppStart")]
+//[assembly: WebActivator.PostApplicationStartMethod(typeof(JabbR.App_Start.Bootstrapper), "PreAppStart")]
 
 namespace JabbR.App_Start
 {
