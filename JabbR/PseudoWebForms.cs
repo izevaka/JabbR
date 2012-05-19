@@ -1,117 +1,50 @@
-﻿using System;
+using System;
 using System.CodeDom.Compiler;
 using System.Collections.Generic;
+using System.Configuration;
 using System.IO;
 using System.Linq;
-using System.Runtime.Remoting.Messaging;
-using System.Threading;
 using System.Web;
-using System.Web.Hosting;
-using System.Web.Http;
-using System.Web.Routing;
-using Jurassic.Compiler;
-using Ninject.Activation;
+using Gate;
 using Owin;
-using SignalR.Ninject;
+using SquishIt.Framework;
 
 namespace JabbR
 {
-    public static class TransitionalGlue
-    {
-        public static string BasePath()
-        {
-            return HostingEnvironment.IsHosted
-                       ? HostingEnvironment.MapPath("~")
-                       : Directory.GetCurrentDirectory();
-        }
-
-        public static void MapHubs(this RouteCollection routes, NinjectDependencyResolver resolver)
-        {
-            Resolver = resolver;
-        }
-
-        public static void MapHttpRoute(this RouteCollection routes, string name, string routeTemplate)
-        {
-        }
-
-        public static IAppBuilder UseHomePage(this IAppBuilder builder)
-        {
-            var viewType = PseudoWebForms.Compile(Path.Combine(BasePath(), "default.aspx"));
-
-            return builder.Use<AppDelegate>(
-                app => (env, result, fault) =>
-                {
-                    var req = new Gate.Request(env);
-                    if (req.Path == "/" || req.Path.Equals("/Default.aspx", StringComparison.OrdinalIgnoreCase))
-                    {
-                        var view = (PseudoWebForms.View)Activator.CreateInstance(viewType);
-                        view.Request = req;
-                        view.Response = new Gate.Response(result) { ContentType = "text/html" };
-                        view.RenderView();
-                        view.Response.End();
-                        return;
-                    }
-                    app(env, result, fault);
-                });
-        }
-
-
-        public static NinjectDependencyResolver Resolver { get; set; }
-
-
-        public static object RequestScopeAccessor(IContext context)
-        {
-            var scope = CallContext.LogicalGetData("Jabbr.TransitionalGlue.Scope");
-            return scope;
-        }
-
-        public static IAppBuilder UseRequestScope(this IAppBuilder builder, Func<Action> scopeFactory)
-        {
-            return builder.Use<AppDelegate>(
-                app => (env, result, fault) =>
-                {
-                    new Gate.Request(env).CallDisposed.Register(scopeFactory());
-                    app(env, result, fault);
-                });
-        }
-
-        public static IDisposable CreateScope()
-        {
-            var prior = CallContext.LogicalGetData("Jabbr.TransitionalGlue.Scope");
-            CallContext.LogicalSetData("Jabbr.TransitionalGlue.Scope", new object());
-            return prior == null
-                ? new Disposable(() => CallContext.FreeNamedDataSlot("Jabbr.TransitionalGlue.Scope"))
-                : new Disposable(() => CallContext.LogicalSetData("Jabbr.TransitionalGlue.Scope", prior));
-        }
-
-        class Disposable : IDisposable
-        {
-            private Action _dispose;
-
-            public Disposable(Action dispose)
-            {
-                _dispose = dispose;
-            }
-
-            public void Dispose()
-            {
-                Interlocked.Exchange(ref _dispose, () => { }).Invoke();
-            }
-        }
-    }
-
-    public static class GlobalConfiguration
-    {
-        public static HttpConfiguration Configuration { get; set; }
-
-    }
-
+    /// <summary>
+    /// Very tactical, and almost certainly temporary, mechanism to execute the default.aspx template.
+    /// A middleware that can execute Razor pages will almost certainly replace this some day.
+    /// </summary>
     public static class PseudoWebForms
     {
+        public static IAppBuilder UseHomePage(this IAppBuilder builder)
+        {
+            var viewType = Compile(Path.Combine(Directory.GetCurrentDirectory(), "default.aspx"));
+
+            return builder.Use<AppDelegate>(
+                app => (env, result, fault) =>
+                           {
+                               var req = new Gate.Request(env);
+                               if (req.Path == "/" || req.Path.Equals("/Default.aspx", StringComparison.OrdinalIgnoreCase))
+                               {
+                                   var view = (PseudoWebForms.View)Activator.CreateInstance(viewType);
+                                   view.Request = req;
+                                   view.Response = new Gate.Response(result) { ContentType = "text/html" };
+                                   view.RenderView();
+                                   view.Response.End();
+                                   return;
+                               }
+                               app(env, result, fault);
+                           });
+        }
+
+        /// <summary>
+        /// Base class for default.aspx that exposes enough of what it expects to find.
+        /// </summary>
         public abstract class View
         {
-            public Gate.Request Request { get; set; }
-            public Gate.Response Response { get; set; }
+            public Request Request { get; set; }
+            public Response Response { get; set; }
 
             public abstract void RenderView();
 
@@ -139,12 +72,17 @@ namespace JabbR
             }
         }
 
+        /// <summary>
+        /// Parses the template, emits code, compiles as an assembly, and returns the resulting loaded type.
+        /// </summary>
         public static Type Compile(string filePath)
         {
+            // Reads all text from the file path
             var defaultAspx = File.ReadAllText(filePath);
 
             using (var writer = new StringWriter())
             {
+                // run through segments looking or additional namespace, if any
                 foreach (var segment in Segments(defaultAspx))
                 {
                     switch (segment.Item1)
@@ -166,6 +104,7 @@ namespace JabbR
                     }
                 }
 
+                // simple top of file
                 writer.Write(@"
 using System;
 public class View : JabbR.PseudoWebForms.View
@@ -173,11 +112,25 @@ public class View : JabbR.PseudoWebForms.View
     public override void RenderView()
     {
 ");
+                // run through each segment and emit code
                 foreach (var segment in Segments(defaultAspx))
                 {
                     switch (segment.Item1)
                     {
-                        case "literal":
+                        case "<%": // raw code snippet
+                            writer.WriteLine(segment.Item2);
+                            break;
+                        case "<%=": // unencoded html output
+                            writer.Write("Write(");
+                            writer.Write(segment.Item2);
+                            writer.WriteLine(");");
+                            break;
+                        case "<%:": // encoded html output
+                            writer.Write("WriteEncoded(");
+                            writer.WriteLine(segment.Item2);
+                            writer.WriteLine(");");
+                            break;
+                        case "literal": // plain text/html to output
                             writer.Write("WriteLiteral(\"");
                             writer.Write(segment.Item2
                                              .Replace("\\", "\\\\")
@@ -187,19 +140,6 @@ public class View : JabbR.PseudoWebForms.View
                                              .Replace("\t", "\\t")
                                 );
                             writer.WriteLine("\");");
-                            break;
-                        case "<%":
-                            writer.WriteLine(segment.Item2);
-                            break;
-                        case "<%=":
-                            writer.Write("Write(");
-                            writer.Write(segment.Item2);
-                            writer.WriteLine(");");
-                            break;
-                        case "<%:":
-                            writer.Write("WriteEncoded(");
-                            writer.WriteLine(segment.Item2);
-                            writer.WriteLine(");");
                             break;
                     }
                 }
@@ -212,25 +152,33 @@ public class View : JabbR.PseudoWebForms.View
 
                 var codeDomProvider = CodeDomProvider.CreateProvider("cs");
 
+                // This ensures some crucial assemblies will appear in the 
+                // following call to .GetAssemblies()
                 var forceToLoad = new[]
                                       {
-                                          typeof (JabbR.GlobalConfiguration),
-                                          typeof (System.Configuration.ConfigurationManager),
-                                          typeof (SquishIt.Framework.Bundle),
+                                          typeof (GlobalConfiguration),
+                                          typeof (ConfigurationManager),
+                                          typeof (Bundle),
                                       };
+
+                // Every assembly in the current domain that is not dynamic
+                // should be passed to the compiler
                 var options = new CompilerParameters(
-                        AppDomain.CurrentDomain.GetAssemblies()
-                            .Where(x => !x.IsDynamic)
-                            .Select(x => x.Location)
-                            .ToArray());
+                    AppDomain.CurrentDomain.GetAssemblies()
+                        .Where(x => !x.IsDynamic)
+                        .Select(x => x.Location)
+                        .ToArray());
 
-
+                // compile source to assembly, and return resulting type
                 var results = codeDomProvider.CompileAssemblyFromSource(options, source);
                 return results.CompiledAssembly.GetType("View");
             }
         }
 
-
+        /// <summary>
+        /// Given source code text, split it up into individual segments.
+        /// Each segment is a tuple of Item1: segment type, and Item2: template text
+        /// </summary>
         static IEnumerable<Tuple<string, string>> Segments(string text)
         {
             var scan = 0;
@@ -255,6 +203,5 @@ public class View : JabbR.PseudoWebForms.View
                 scan = next.endIndex + 2;
             }
         }
-
     }
 }

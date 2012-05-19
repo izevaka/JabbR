@@ -51,15 +51,15 @@ namespace JabbR.App_Start
 
             kernel.Bind<JabbrContext>()
                 .To<JabbrContext>()
-                .InScope(TransitionalGlue.RequestScopeAccessor);
+                .InJabbrRequestScope();
 
             kernel.Bind<IJabbrRepository>()
                 .To<PersistedRepository>()
-                .InScope(TransitionalGlue.RequestScopeAccessor);
+                .InJabbrRequestScope();
 
             kernel.Bind<IChatService>()
                   .To<ChatService>()
-                  .InScope(TransitionalGlue.RequestScopeAccessor);
+                  .InJabbrRequestScope();
 
             kernel.Bind<ICryptoService>()
                 .To<CryptoService>()
@@ -107,7 +107,7 @@ namespace JabbR.App_Start
             _timer = new Timer(
                 _ =>
                 {
-                    using (TransitionalGlue.CreateScope())
+                    using (RequestScope.Create())
                     {
                         Sweep(repositoryFactory, resolver);
                     }
@@ -115,7 +115,7 @@ namespace JabbR.App_Start
 
             SetupErrorHandling();
 
-            using (TransitionalGlue.CreateScope())
+            using (RequestScope.Create())
             {
                 ClearConnectedClients(repositoryFactory());
             }
