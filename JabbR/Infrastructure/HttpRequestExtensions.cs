@@ -136,13 +136,14 @@ namespace JabbR.Infrastructure
         }
 
         /// <summary>
-        /// Gets the absolute URI of the current server, even if the app is running behind a load balancer.
+        /// Formats the requested path using the current server address, even if the app is running behind a load balancer.
         /// Taken from AppHarbour blog and adapted to use request protocol and for use with Web API.
         /// </summary>
         /// <param name="requestMessage">The request message.</param>
-        /// <param name="relativeUri">The relative URI.</param>
+        /// <param name="path">Path component of the URI. It is the responsibility of the caller
+        /// to ensure that it is URL encoded as this method will NOT encode it</param>
         /// <returns></returns>
-        public static Uri GetAbsoluteUri(this HttpRequestMessage requestMessage, string relativeUri)
+        public static string FormatResourceUri(this HttpRequestMessage requestMessage, string path)
         {
             var proto = "http";
             IEnumerable<string> headerValues;
@@ -155,7 +156,6 @@ namespace JabbR.Infrastructure
             var uriBuilder = new UriBuilder
             {
                 Host = requestMessage.RequestUri.Host,
-                Path = "/",
                 Scheme = proto,
             };
 
@@ -163,8 +163,12 @@ namespace JabbR.Infrastructure
             {
                 uriBuilder.Port = requestMessage.RequestUri.Port;
             }
-
-            return new Uri(uriBuilder.Uri, relativeUri);
+            //Uri constructor that doesn't escape path is deprecated,
+            //This method is used to create absolute URIs that are used to
+            //represent resources on the site, including URI templates of the form "http://jabbr.net/api/{room}/{range}"
+            //In the above URI we don't want braces to be escaped, hence we construct the URI manually.
+            var slash = new char[] { '/' };
+            return uriBuilder.Uri.AbsoluteUri.TrimEnd(slash) + "/" + path.TrimStart(slash);
         }
     }
 }

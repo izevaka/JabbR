@@ -25,11 +25,11 @@ namespace JabbR.WebApi
         /// </summary>
         /// <param name="sitePath">Path within the aplication, may contain ~ to denote the application root</param>
         /// <returns>A URL that corresponds to requested path using host and protocol of the request</returns>
-        public string ToAbsoluteUrl(string sitePath)
+        public string ToAbsoluteUri(string sitePath)
         {
             var path = _VirtualPathUtilityWrapper.ToAbsolute(sitePath);
 
-            return Request.GetAbsoluteUri(path).AbsoluteUri;
+            return Request.FormatResourceUri(path);
         }
 
         public HttpResponseMessage GetFrontPage()
@@ -39,13 +39,13 @@ namespace JabbR.WebApi
                 Auth = new AuthApiModel
                 {
                     JanrainAppId = _AppSettings.AuthAppId,
-                    AuthUri = ToAbsoluteUrl("~/Auth/Login.ashx")
+                    AuthUri = ToAbsoluteUri("~/Auth/Login.ashx")
                 },
-                MessagesUri = ToAbsoluteUrl(GetMessagesUrl())
+                MessagesUri = ToAbsoluteUri(GetMessagesPath())
             };
             return Request.CreateJabbrSuccessMessage(HttpStatusCode.OK, responseData);
         }
-        private string GetMessagesUrl() {
+        private string GetMessagesPath() {
             //hardcoded for now, needs a better place - i.e. some sort of constants.cs. 
             //Alternatively there might be a better way to do that in WebAPI
             return "/api/v1/messages/{room}/{format}";

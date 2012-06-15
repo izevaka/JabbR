@@ -117,6 +117,25 @@ namespace JabbR.Test
 
                 Assert.Equal("https://example.com/Auth/Login.ashx", ((ApiFrontpageModel)responseData.Value).Auth.AuthUri);
             }
+            [Fact]
+            public void ShouldNotEncodeBracesInMessagesUri()
+            {
+                Mock<IVirtualPathUtility> virtualPathMock = new Mock<IVirtualPathUtility>();
+                virtualPathMock.Setup(vp => vp.ToAbsolute(It.IsAny<string>())).Returns<string>(s=>s);
+
+                Mock<IApplicationSettings> appSettingsMock = new Mock<IApplicationSettings>();
+
+                ApiFrontPageController controller = new ApiFrontPageController(virtualPathMock.Object, appSettingsMock.Object);
+                var requestMessage = new HttpRequestMessage(HttpMethod.Get, "http://example.com:1067/api");
+                requestMessage.Properties[HttpPropertyKeys.HttpConfigurationKey] = new HttpConfiguration();
+                requestMessage.SetIsLocal(false);
+                
+                controller.Request = requestMessage;
+
+                var responseData = controller.GetFrontPage().Content as ObjectContent;
+
+                Assert.Equal("http://example.com/api/v1/messages/{room}/{format}", ((ApiFrontpageModel)responseData.Value).MessagesUri);
+            }
         }
     }
 }
